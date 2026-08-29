@@ -2,6 +2,22 @@
 
 Extensao Manifest V3 para Chrome e Microsoft Edge que traduz, quase em tempo real, mensagens novas do chat da Twitch. A alteracao acontece somente na visualizacao local do navegador: a Twitch nao recebe mensagem modificada e o envio de chat continua intacto.
 
+## Estado atual
+
+O projeto ja funciona em uso real na Twitch, mas ainda nao esta perfeito. A traducao local depende das APIs nativas do navegador e algumas frases curtas, girias, contexto de jogo e mensagens muito fragmentadas podem sair estranhas.
+
+Este print mostra o estado atual da extensao em uma live real:
+
+![Twitch Live Translator em uso, mostrando traducoes automaticas ainda com pontos a refinar](docs/screenshots/translation-current-state.png)
+
+Contribuicoes sao bem-vindas, principalmente em areas que ainda precisam de refinamento:
+
+- qualidade de traducao em mensagens curtas e com girias;
+- heuristicas para detectar quando nao vale traduzir;
+- suporte a mais variacoes do DOM da Twitch;
+- UX do popup e feedback de download dos modelos;
+- testes reais em Chrome, Edge e popout chat.
+
 ## Funcionalidades
 
 - Detecta novas mensagens com `MutationObserver`, sem polling fixo.
@@ -105,6 +121,9 @@ Edite `src/shared/constants.js`, objeto `TLT.TWITCH_SELECTORS`.
 |-- manifest.json
 |-- README.md
 |-- LICENSE
+|-- docs/
+|   `-- screenshots/
+|       `-- translation-current-state.png
 |-- icons/
 |   |-- icon16.png
 |   |-- icon32.png
