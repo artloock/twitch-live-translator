@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Twitch Live Translator</title>
+    <link rel="stylesheet" href="popup.css">
+  </head>
+  <body>
+    <main class="popup">
+      <header class="header">
+        <div class="mark">TLT</div>
+        <div>
+          <h1>Twitch Live Translator</h1>
+          <p>Traducao local para chat da Twitch</p>
+        </div>
+      </header>
+
+      <label class="switch-row">
+        <span>Traducao automatica</span>
+        <input id="enabled" type="checkbox">
+      </label>
+
+      <section class="section">
+        <label for="targetLanguage">Traduzir para</label>
+        <select id="targetLanguage"></select>
+      </section>
+
+      <section class="section">
+        <span class="label">Modo de exibicao</span>
+        <label class="radio-row">
+          <input type="radio" name="displayMode" value="original_translation">
+          <span>Original + traducao</span>
+        </label>
+        <label class="radio-row">
+          <input type="radio" name="displayMode" value="translation_only">
+          <span>Somente traducao</span>
+        </label>
+        <label class="radio-row">
+          <input type="radio" name="displayMode" value="translation_original">
+          <span>Traducao + original</span>
+        </label>
+      </section>
+
+      <section class="section checks">
+        <label><input id="autoDetectLanguage" type="checkbox"> Detectar idioma automaticamente</label>
+        <label><input id="ignoreTargetLanguage" type="checkbox"> Ignorar mensagens no idioma de destino</label>
+        <label><input id="ignoreShortMessages" type="checkbox"> Ignorar mensagens muito curtas</label>
+        <label><input id="preserveEmotes" type="checkbox"> Preservar emotes</label>
+      </section>
+
+      <section class="status">
+        <div><span>Translation API</span><strong id="translatorApi">Verificando...</strong></div>
+        <div><span>Language Detector</span><strong id="languageDetectorApi">Verificando...</strong></div>
+        <button id="prepareModels" type="button" class="prepare-button">Preparar modelos locais</button>
+        <div id="modelStatus" class="model-status" hidden></div>
+      </section>
+    </main>
+
+    <script src="../shared/constants.js"></script>
+    <script src="../shared/utils.js"></script>
+    <script src="../shared/settings.js"></script>
+    <script src="popup.js"></script>
+  </body>
+</html>

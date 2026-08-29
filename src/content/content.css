@@ -1,0 +1,30 @@
+.tlt-translation {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.9em;
+  line-height: 1.35;
+  opacity: 0.82;
+  color: currentColor;
+  overflow-wrap: anywhere;
+}
+
+.tlt-hide-original [data-tlt-original-body="true"] {
+  display: none !important;
+}
+
+.tlt-mode-translation-only .tlt-translation,
+.tlt-mode-translation-original .tlt-translation {
+  margin-top: 0;
+  opacity: 0.92;
+}
+
+.tlt-status {
+  margin: 6px 10px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  font-size: 0.85em;
+  line-height: 1.35;
+  color: currentColor;
+  background: color-mix(in srgb, currentColor 10%, transparent);
+  opacity: 0.9;
+}

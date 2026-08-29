@@ -1,0 +1,184 @@
+:root {
+  color-scheme: dark light;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  width: 330px;
+  margin: 0;
+  color: #efeff1;
+  background: #18181b;
+}
+
+.popup {
+  padding: 16px;
+}
+
+.header {
+  display: grid;
+  grid-template-columns: 40px 1fr;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.mark {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  border-radius: 8px;
+  color: #ffffff;
+  background: #9147ff;
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+h1 {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.2;
+}
+
+p {
+  margin: 2px 0 0;
+  color: #adadb8;
+  font-size: 0.78rem;
+}
+
+.section,
+.switch-row,
+.status {
+  padding: 12px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.switch-row,
+.radio-row,
+.checks label,
+.status div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.switch-row {
+  font-weight: 700;
+}
+
+label,
+.label {
+  display: block;
+  color: #efeff1;
+  font-size: 0.85rem;
+}
+
+select {
+  width: 100%;
+  margin-top: 8px;
+  padding: 9px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 6px;
+  color: #efeff1;
+  background: #26262c;
+  font: inherit;
+}
+
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: #9147ff;
+}
+
+.radio-row {
+  justify-content: flex-start;
+  margin-top: 9px;
+}
+
+.checks {
+  display: grid;
+  gap: 10px;
+}
+
+.checks label {
+  justify-content: flex-start;
+}
+
+.status {
+  display: grid;
+  gap: 9px;
+  color: #adadb8;
+  font-size: 0.78rem;
+}
+
+.status strong {
+  color: #efeff1;
+  font-weight: 700;
+}
+
+.model-status {
+  display: block;
+  padding: 8px;
+  border-radius: 6px;
+  color: #efeff1;
+  background: rgba(145, 71, 255, 0.18);
+}
+
+.model-status[hidden] {
+  display: none;
+}
+
+.prepare-button {
+  width: 100%;
+  min-height: 34px;
+  border: 0;
+  border-radius: 6px;
+  color: #ffffff;
+  background: #9147ff;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.prepare-button:hover {
+  background: #7c35df;
+}
+
+.prepare-button:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+@media (prefers-color-scheme: light) {
+  body {
+    color: #1f1f23;
+    background: #ffffff;
+  }
+
+  p,
+  .status {
+    color: #53535f;
+  }
+
+  label,
+  .label,
+  .status strong {
+    color: #1f1f23;
+  }
+
+  .section,
+  .switch-row,
+  .status {
+    border-top-color: rgba(0, 0, 0, 0.12);
+  }
+
+  select {
+    color: #1f1f23;
+    background: #f3f3f5;
+    border-color: rgba(0, 0, 0, 0.15);
+  }
+}
