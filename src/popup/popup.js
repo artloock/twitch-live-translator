@@ -1,9 +1,8 @@
-(function initPopup(global) {
+(function initTltPopup(global) {
   "use strict";
 
-  const TLT = (global.TLT = global.TLT || {});
+  const TLT = global.TLT;
   const $ = (selector) => document.querySelector(selector);
-
   const elements = {
     enabled: $("#enabled"),
     targetLanguage: $("#targetLanguage"),
@@ -16,6 +15,8 @@
     prepareModels: $("#prepareModels"),
     modelStatus: $("#modelStatus")
   };
+  let preparing = false;
+  const service = TLT.createTranslationService({ onStatusChange: renderStatus });
 
   function fillLanguages() {
     elements.targetLanguage.replaceChildren(
@@ -29,13 +30,10 @@
   }
 
   function renderSettings(settings) {
-    elements.enabled.checked = settings.enabled;
+    for (const key of ["enabled", "autoDetectLanguage", "ignoreTargetLanguage", "ignoreShortMessages", "preserveEmotes"]) {
+      elements[key].checked = settings[key];
+    }
     elements.targetLanguage.value = settings.targetLanguage;
-    elements.autoDetectLanguage.checked = settings.autoDetectLanguage;
-    elements.ignoreTargetLanguage.checked = settings.ignoreTargetLanguage;
-    elements.ignoreShortMessages.checked = settings.ignoreShortMessages;
-    elements.preserveEmotes.checked = settings.preserveEmotes;
-
     const selectedMode = document.querySelector(`input[name="displayMode"][value="${settings.displayMode}"]`);
     if (selectedMode) {
       selectedMode.checked = true;
@@ -45,35 +43,31 @@
   function labelForAvailability(value) {
     const labels = {
       available: "Disponivel",
-      downloadable: "Disponivel, requer download",
+      downloadable: "Requer download",
       downloading: "Baixando",
       unavailable: "Nao disponivel",
-      needs_activation: "Clique em preparar modelos",
-      unknown: "Desconhecido"
+      needs_activation: "Aguardando interacao",
+      unknown: "Verificando..."
     };
-
     return labels[value] || value || "Desconhecido";
   }
 
   function renderStatus(status) {
     elements.translatorApi.textContent = labelForAvailability(status && status.translatorApi);
     elements.languageDetectorApi.textContent = labelForAvailability(status && status.languageDetectorApi);
-
     const modelStatus = status && status.modelStatus;
     if (modelStatus && modelStatus !== "idle") {
       const progress = typeof status.modelProgress === "number"
         ? ` ${Math.round(status.modelProgress * 100)}%`
         : "";
-      elements.modelStatus.hidden = false;
-      elements.modelStatus.textContent = modelStatus === "downloading_detector"
-        ? `Baixando modelo de deteccao...${progress}`
-        : `Baixando modelo de traducao...${progress}`;
+      updateModelStatus(modelStatus === "downloading_detector"
+        ? `Baixando detector de idioma...${progress}`
+        : `Baixando modelo de traducao...${progress}`);
     } else {
       elements.modelStatus.hidden = true;
       elements.modelStatus.textContent = "";
     }
-
-    elements.prepareModels.disabled = !("Translator" in global) && !("LanguageDetector" in global);
+    elements.prepareModels.disabled = preparing || (!("Translator" in global) && !("LanguageDetector" in global));
   }
 
   function updateModelStatus(text) {
@@ -81,153 +75,88 @@
     elements.modelStatus.textContent = text;
   }
 
-  async function readRuntimeStatus() {
-    const values = await TLT.utils.storageGet(chrome.storage.local, {
-      [TLT.STATUS_STORAGE_KEY]: {
-        translatorApi: "unknown",
-        languageDetectorApi: "unknown",
-        modelStatus: "idle",
-        modelProgress: null
+  async function readActiveTabStatus() {
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (!tab || !tab.id || !/^https:\/\/(www\.)?twitch\.tv\//.test(tab.url || "")) {
+        return false;
       }
-    });
-
-    renderStatus(values[TLT.STATUS_STORAGE_KEY]);
-  }
-
-  async function refreshPopupApiStatus() {
-    const status = {
-      translatorApi: "Translator" in global ? "unknown" : "unavailable",
-      languageDetectorApi: "LanguageDetector" in global ? "unknown" : "unavailable",
-      modelStatus: "idle",
-      modelProgress: null
-    };
-
-    if ("Translator" in global) {
-      try {
-        status.translatorApi = await global.Translator.availability({
-          sourceLanguage: "en",
-          targetLanguage: elements.targetLanguage.value || TLT.DEFAULT_SETTINGS.targetLanguage
-        });
-      } catch (error) {
-        status.translatorApi = "unavailable";
+      const response = await chrome.tabs.sendMessage(tab.id, { type: "TLT_GET_STATUS" });
+      if (response && response.status) {
+        renderStatus(response.status);
+        return true;
       }
+    } catch (error) {
+      TLT.utils.warn("Chat ainda nao disponivel", error);
     }
-
-    if ("LanguageDetector" in global) {
-      try {
-        status.languageDetectorApi = await global.LanguageDetector.availability();
-      } catch (error) {
-        status.languageDetectorApi = "unavailable";
-      }
-    }
-
-    renderStatus(status);
+    return false;
   }
 
   async function prepareLocalModels() {
-    const targetLanguage = elements.targetLanguage.value || TLT.DEFAULT_SETTINGS.targetLanguage;
-
+    preparing = true;
     elements.prepareModels.disabled = true;
     elements.prepareModels.textContent = "Preparando...";
-
-    const status = {
-      translatorApi: "Translator" in global ? "unknown" : "unavailable",
-      languageDetectorApi: "LanguageDetector" in global ? "unknown" : "unavailable",
-      modelStatus: "idle",
-      modelProgress: null,
-      lastError: ""
-    };
-
     try {
-      if ("LanguageDetector" in global) {
-        updateModelStatus("Preparando detector de idioma...");
-        const detector = await global.LanguageDetector.create({
-          monitor(monitor) {
-            monitor.addEventListener("downloadprogress", (event) => {
-              const progress = Number.isFinite(event.loaded) ? ` ${Math.round(event.loaded * 100)}%` : "";
-              updateModelStatus(`Baixando detector de idioma...${progress}`);
-            });
-          }
-        });
-        status.languageDetectorApi = "available";
-        detector.destroy?.();
-      }
-
-      if ("Translator" in global) {
-        updateModelStatus("Preparando traducao ingles -> destino...");
-        const availability = await global.Translator.availability({
-          sourceLanguage: "en",
-          targetLanguage
-        });
-
-        if (availability === "unavailable") {
-          status.translatorApi = "unavailable";
-        } else {
-          const translator = await global.Translator.create({
-            sourceLanguage: "en",
-            targetLanguage,
-            monitor(monitor) {
-              monitor.addEventListener("downloadprogress", (event) => {
-                const progress = Number.isFinite(event.loaded) ? ` ${Math.round(event.loaded * 100)}%` : "";
-                updateModelStatus(`Baixando modelo de traducao...${progress}`);
-              });
-            }
-          });
-          status.translatorApi = "available";
-          translator.destroy?.();
-        }
-      }
-
-      await TLT.utils.storageSet(chrome.storage.local, { [TLT.STATUS_STORAGE_KEY]: status });
+      const status = await service.prepareModels(elements.targetLanguage.value, {
+        autoDetectLanguage: elements.autoDetectLanguage.checked,
+        retryActivation: true
+      });
       renderStatus(status);
-      updateModelStatus("Modelos preparados. Recarregue a aba da Twitch se o chat ja estava aberto.");
+      const tabs = await chrome.tabs.query({ url: ["https://www.twitch.tv/*", "https://twitch.tv/*"] });
+      await Promise.allSettled(tabs.map((tab) => chrome.tabs.sendMessage(tab.id, { type: "TLT_RETRY_MODELS" })));
+      if (status.translatorApi === "available" && (!elements.autoDetectLanguage.checked || status.languageDetectorApi === "available")) {
+        updateModelStatus("Modelos preparados.");
+      } else {
+        updateModelStatus(status.lastError || "Modelos indisponiveis neste navegador.");
+      }
     } catch (error) {
-      status.lastError = String(error && error.message || error);
-      if (/activation|gesture|user/i.test(status.lastError)) {
-        status.translatorApi = "needs_activation";
-      }
-      await TLT.utils.storageSet(chrome.storage.local, { [TLT.STATUS_STORAGE_KEY]: status });
-      renderStatus(status);
-      updateModelStatus(`Nao foi possivel preparar: ${status.lastError}`);
+      updateModelStatus(`Nao foi possivel preparar: ${error.message || error}`);
     } finally {
-      elements.prepareModels.disabled = false;
+      preparing = false;
+      elements.prepareModels.disabled = !("Translator" in global) && !("LanguageDetector" in global);
       elements.prepareModels.textContent = "Preparar modelos locais";
     }
   }
 
   function bindControls() {
-    elements.enabled.addEventListener("change", () => TLT.settings.saveSettings({ enabled: elements.enabled.checked }));
-    elements.targetLanguage.addEventListener("change", () => {
-      TLT.settings.saveSettings({ targetLanguage: elements.targetLanguage.value });
-      refreshPopupApiStatus();
+    for (const key of ["enabled", "autoDetectLanguage", "ignoreTargetLanguage", "ignoreShortMessages", "preserveEmotes"]) {
+      elements[key].addEventListener("change", () => {
+        TLT.settings.saveSettings({ [key]: elements[key].checked }).catch(TLT.utils.warn);
+      });
+    }
+    elements.targetLanguage.addEventListener("change", async () => {
+      try {
+        await TLT.settings.saveSettings({ targetLanguage: elements.targetLanguage.value });
+        if (!await readActiveTabStatus()) {
+          await service.refreshStatus(elements.targetLanguage.value);
+        }
+      } catch (error) {
+        TLT.utils.warn("Falha ao salvar idioma", error);
+      }
     });
-    elements.autoDetectLanguage.addEventListener("change", () => TLT.settings.saveSettings({ autoDetectLanguage: elements.autoDetectLanguage.checked }));
-    elements.ignoreTargetLanguage.addEventListener("change", () => TLT.settings.saveSettings({ ignoreTargetLanguage: elements.ignoreTargetLanguage.checked }));
-    elements.ignoreShortMessages.addEventListener("change", () => TLT.settings.saveSettings({ ignoreShortMessages: elements.ignoreShortMessages.checked }));
-    elements.preserveEmotes.addEventListener("change", () => TLT.settings.saveSettings({ preserveEmotes: elements.preserveEmotes.checked }));
     elements.prepareModels.addEventListener("click", prepareLocalModels);
-
     document.querySelectorAll("input[name='displayMode']").forEach((radio) => {
       radio.addEventListener("change", () => {
         if (radio.checked) {
-          TLT.settings.saveSettings({ displayMode: radio.value });
+          TLT.settings.saveSettings({ displayMode: radio.value }).catch(TLT.utils.warn);
         }
       });
     });
-
     chrome.storage.onChanged.addListener((changes, areaName) => {
-      if (areaName === "local" && changes[TLT.STATUS_STORAGE_KEY]) {
-        renderStatus(changes[TLT.STATUS_STORAGE_KEY].newValue);
+      if (areaName === "local" && changes[TLT.STATUS_STORAGE_KEY] && !preparing) {
+        readActiveTabStatus();
       }
     });
+    TLT.settings.onSettingsChanged(async () => renderSettings(await TLT.settings.getSettings()));
   }
 
   async function init() {
     fillLanguages();
     renderSettings(await TLT.settings.getSettings());
-    await readRuntimeStatus();
-    await refreshPopupApiStatus();
     bindControls();
+    if (!await readActiveTabStatus()) {
+      await service.refreshStatus(elements.targetLanguage.value);
+    }
   }
 
   init().catch((error) => {

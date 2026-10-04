@@ -26,6 +26,8 @@
       this.cache = TLT.utils.createLimitedMap(TLT.CACHE_LIMIT);
       this.detectorPromise = null;
       this.translatorPromises = new Map();
+      this.detectorNeedsActivation = false;
+      this.pairsNeedingActivation = new Set();
       this.status = {
         translatorApi: this.hasTranslatorApi() ? "unknown" : "unavailable",
         languageDetectorApi: this.hasLanguageDetectorApi() ? "unknown" : "unavailable",
@@ -47,6 +49,12 @@
       return { ...this.status };
     }
 
+    needsActivation(targetLanguage) {
+      const target = normalizeLanguageCode(targetLanguage);
+      return this.detectorNeedsActivation || Array.from(this.pairsNeedingActivation)
+        .some((pair) => pair.split("->")[1] === target);
+    }
+
     setStatus(patch) {
       this.status = { ...this.status, ...patch };
       this.onStatusChange(this.getStatus());
@@ -60,7 +68,7 @@
       } else {
         try {
           const availability = await global.Translator.availability({
-            sourceLanguage: "en",
+            sourceLanguage: sameLanguage("en", normalizedTarget) ? "es" : "en",
             targetLanguage: normalizedTarget
           });
           this.setStatus({ translatorApi: availability || "available" });
@@ -90,24 +98,34 @@
         return null;
       }
 
+      if (this.detectorNeedsActivation) {
+        throw new Error("User activation required for LanguageDetector.");
+      }
+
       if (!this.detectorPromise) {
-        this.detectorPromise = global.LanguageDetector.create({
-          monitor: (monitor) => {
-            this.setStatus({ modelStatus: "downloading_detector", modelProgress: null });
-            monitor.addEventListener("downloadprogress", (event) => {
-              this.setStatus({
-                modelStatus: "downloading_detector",
-                modelProgress: Number.isFinite(event.loaded) ? event.loaded : null
+        try {
+          this.detectorPromise = Promise.resolve(global.LanguageDetector.create({
+            monitor: (monitor) => {
+              this.setStatus({ modelStatus: "downloading_detector", modelProgress: null });
+              monitor.addEventListener("downloadprogress", (event) => {
+                this.setStatus({
+                  modelStatus: "downloading_detector",
+                  modelProgress: Number.isFinite(event.loaded) ? event.loaded : null
+                });
               });
-            });
-          }
-        })
+            }
+          }));
+        } catch (error) {
+          this.detectorPromise = Promise.reject(error);
+        }
+        this.detectorPromise = this.detectorPromise
           .then((detector) => {
-            this.setStatus({ languageDetectorApi: "available", modelStatus: "idle", modelProgress: null });
+            this.setStatus({ languageDetectorApi: "available", modelStatus: "idle", modelProgress: null, lastError: "" });
             return detector;
           })
           .catch((error) => {
             this.detectorPromise = null;
+            this.detectorNeedsActivation = classifyApiError(error) === "needs_activation";
             this.setStatus({
               languageDetectorApi: classifyApiError(error),
               modelStatus: "idle",
@@ -158,21 +176,13 @@
         throw new Error("Par de idiomas invalido.");
       }
 
+      if (this.pairsNeedingActivation.has(pairKey)) {
+        throw new Error(`User activation required for ${pairKey}.`);
+      }
+
       if (!this.translatorPromises.has(pairKey)) {
         const promise = (async () => {
-          const availability = await global.Translator.availability({
-            sourceLanguage: source,
-            targetLanguage: target
-          });
-
-          if (availability === "unavailable") {
-            throw new Error(`Par de idiomas nao suportado: ${pairKey}`);
-          }
-
-          if (availability === "downloadable" || availability === "downloading") {
-            this.setStatus({ translatorApi: availability, modelStatus: "downloading_translator", modelProgress: null });
-          }
-
+          // Call create before any await to preserve activation from a Twitch event.
           const translator = await global.Translator.create({
             sourceLanguage: source,
             targetLanguage: target,
@@ -187,10 +197,13 @@
             }
           });
 
-          this.setStatus({ translatorApi: "available", modelStatus: "idle", modelProgress: null });
+          this.setStatus({ translatorApi: "available", modelStatus: "idle", modelProgress: null, lastError: "" });
           return translator;
         })().catch((error) => {
           this.translatorPromises.delete(pairKey);
+          if (classifyApiError(error) === "needs_activation") {
+            this.pairsNeedingActivation.add(pairKey);
+          }
           this.setStatus({
             translatorApi: classifyApiError(error),
             modelStatus: "idle",
@@ -204,6 +217,30 @@
       }
 
       return this.translatorPromises.get(pairKey);
+    }
+
+    prepareModels(targetLanguage, { autoDetectLanguage = true, retryActivation = false } = {}) {
+      const target = normalizeLanguageCode(targetLanguage);
+      const pairs = new Set([`${sameLanguage("en", target) ? "es" : "en"}->${target}`]);
+      if (retryActivation) {
+        this.pairsNeedingActivation.forEach((pair) => {
+          if (pair.split("->")[1] === target) {
+            pairs.add(pair);
+            this.pairsNeedingActivation.delete(pair);
+          }
+        });
+        this.detectorNeedsActivation = false;
+      }
+
+      // Start both models together, while a trusted event still has activation.
+      const tasks = [];
+      if (autoDetectLanguage && this.hasLanguageDetectorApi()) {
+        tasks.push(this.getDetector());
+      }
+      if (this.hasTranslatorApi()) {
+        pairs.forEach((pair) => tasks.push(this.getTranslator(...pair.split("->"))));
+      }
+      return Promise.allSettled(tasks).then(() => this.getStatus());
     }
 
     async translate(text, sourceLanguage, targetLanguage) {

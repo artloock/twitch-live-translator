@@ -16,6 +16,12 @@
       refreshStatus(targetLanguage) {
         return provider.refreshStatus(targetLanguage);
       },
+      prepareModels(targetLanguage, options) {
+        return provider.prepareModels(targetLanguage, options);
+      },
+      needsActivation(targetLanguage) {
+        return provider.needsActivation(targetLanguage);
+      },
       getStatus() {
         return provider.getStatus();
       }

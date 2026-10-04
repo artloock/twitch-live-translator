@@ -9,6 +9,7 @@
 
 body {
   width: 330px;
+  max-width: 100vw;
   margin: 0;
   color: #efeff1;
   background: #18181b;
@@ -118,6 +119,43 @@ input[type="radio"] {
 .status strong {
   color: #efeff1;
   font-weight: 700;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.settings-menu {
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.settings-menu summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  cursor: pointer;
+  list-style: none;
+  color: #adadb8;
+  font-size: 0.85rem;
+}
+
+.settings-menu summary::-webkit-details-marker {
+  display: none;
+}
+
+.settings-menu summary:hover {
+  color: #efeff1;
+}
+
+.settings-menu summary:focus-visible,
+select:focus-visible,
+button:focus-visible {
+  outline: 2px solid #9147ff;
+  outline-offset: 2px;
+}
+
+.settings-menu summary img {
+  filter: invert(1);
+  opacity: 0.8;
 }
 
 .model-status {
@@ -126,6 +164,7 @@ input[type="radio"] {
   border-radius: 6px;
   color: #efeff1;
   background: rgba(145, 71, 255, 0.18);
+  overflow-wrap: anywhere;
 }
 
 .model-status[hidden] {
@@ -172,8 +211,25 @@ input[type="radio"] {
 
   .section,
   .switch-row,
-  .status {
+  .status,
+  .settings-menu {
     border-top-color: rgba(0, 0, 0, 0.12);
+  }
+
+  .settings-menu summary {
+    color: #53535f;
+  }
+
+  .settings-menu summary:hover {
+    color: #1f1f23;
+  }
+
+  .settings-menu summary img {
+    filter: none;
+  }
+
+  .model-status {
+    color: #1f1f23;
   }
 
   select {

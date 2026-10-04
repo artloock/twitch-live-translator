@@ -10,7 +10,8 @@
     chatObserver: null,
     rootObserver: null,
     locateScheduled: false,
-    overflowNoticeTimer: null
+    overflowNoticeTimer: null,
+    generation: 0
   };
 
   const translationService = TLT.createTranslationService({
@@ -27,20 +28,22 @@
 
   async function init() {
     state.settings = await TLT.settings.getSettings();
-    await publishStatus();
+    safeStorageSet({ [TLT.STATUS_STORAGE_KEY]: translationService.getStatus() });
     attachRootObserver();
-    locateAndObserveChat();
     TLT.settings.onSettingsChanged(handleSettingsChange);
     chrome.runtime.onMessage.addListener(handleRuntimeMessage);
+    document.addEventListener("click", handlePageInteraction, true);
+    document.addEventListener("keydown", handlePageInteraction, true);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    locateAndObserveChat();
     debug("Inicializado", state.settings);
   }
 
-  async function publishStatus() {
-    const status = await translationService.refreshStatus(state.settings.targetLanguage);
-    safeStorageSet({ [TLT.STATUS_STORAGE_KEY]: status });
-  }
-
   function handleRuntimeMessage(message, sender, sendResponse) {
+    if (message && message.type === "TLT_RETRY_MODELS") {
+      prepareModels(true).then((status) => sendResponse({ status }));
+      return true;
+    }
     if (!message || message.type !== "TLT_GET_STATUS") {
       return false;
     }
@@ -50,6 +53,35 @@
       status: translationService.getStatus()
     });
     return false;
+  }
+
+  function prepareModels(retryActivation = false) {
+    if (!state.settings.enabled || !state.chatContainer) {
+      return Promise.resolve(translationService.getStatus());
+    }
+    return translationService.prepareModels(state.settings.targetLanguage, {
+      autoDetectLanguage: state.settings.autoDetectLanguage,
+      retryActivation
+    }).then((status) => {
+      processExistingMessages();
+      return status;
+    });
+  }
+
+  function handlePageInteraction(event) {
+    if (!event.isTrusted) {
+      return;
+    }
+    if (translationService.needsActivation(state.settings.targetLanguage)) {
+      prepareModels(true);
+    }
+  }
+
+  function handleVisibilityChange() {
+    if (document.visibilityState === "visible") {
+      locateAndObserveChat();
+      prepareModels();
+    }
   }
 
   async function handleSettingsChange(partialSettings) {
@@ -68,18 +100,23 @@
       partialSettings.ignoreShortMessages !== undefined
     );
 
-    if (!state.settings.enabled) {
+    if (requiresRetranslation || partialSettings.enabled !== undefined) {
+      state.generation += 1;
       queue.clear();
+      TLT.twitchChat.clearTranslations(state.chatContainer);
+    }
+
+    if (!state.settings.enabled) {
       return;
     }
 
     if (!previous.enabled && state.settings.enabled) {
+      prepareModels();
       processExistingMessages();
     }
 
     if (requiresRetranslation) {
-      TLT.twitchChat.clearTranslations(state.chatContainer);
-      await publishStatus();
+      prepareModels();
       processExistingMessages();
     }
   }
@@ -107,7 +144,7 @@
 
   function locateAndObserveChat() {
     const container = TLT.twitchChat.findChatContainer(document);
-    if (!container || container === state.chatContainer) {
+    if (container === state.chatContainer) {
       return;
     }
 
@@ -115,13 +152,26 @@
       state.chatObserver.disconnect();
     }
 
+    state.generation += 1;
+    queue.clear();
     state.chatContainer = container;
+    state.chatObserver = null;
+    if (!container) {
+      return;
+    }
     state.chatObserver = new MutationObserver(handleChatMutations);
     state.chatObserver.observe(container, { childList: true, subtree: true });
     debug("Chat encontrado", container);
 
     if (state.settings.enabled) {
       TLT.twitchChat.cleanDuplicateTranslations(state.chatContainer);
+      // A more specific container can replace the fallback while tasks are pending.
+      TLT.twitchChat.collectMessageElements(container).forEach((message) => {
+        if (message.dataset.tltTranslated !== "true") {
+          delete message.dataset.tltProcessed;
+        }
+      });
+      prepareModels();
       processExistingMessages();
     }
   }
@@ -163,6 +213,10 @@
     }
 
     messageElement.dataset.tltProcessed = "true";
+    const generation = state.generation;
+    const settings = { ...state.settings };
+    const isCurrent = () => state.settings.enabled && state.generation === generation &&
+      document.contains(messageElement);
 
     const { body, text } = TLT.twitchChat.extractMessageText(messageElement);
     if (!shouldTranslateMessage(text, state.settings)) {
@@ -170,18 +224,28 @@
     }
 
     const queued = queue.enqueue(async () => {
+      if (!isCurrent()) {
+        return;
+      }
       try {
-        const sourceLanguage = state.settings.autoDetectLanguage
+        const sourceLanguage = settings.autoDetectLanguage
           ? await translationService.detectLanguage(text)
-          : "";
-        const targetLanguage = state.settings.targetLanguage;
+          : "en";
+        const targetLanguage = settings.targetLanguage;
+
+        if (!isCurrent()) {
+          return;
+        }
 
         if (!sourceLanguage) {
+          if (translationService.getStatus().languageDetectorApi !== "available") {
+            delete messageElement.dataset.tltProcessed;
+          }
           warn("Idioma nao detectado, mantendo original", text);
           return;
         }
 
-        if (state.settings.ignoreTargetLanguage && sameLanguage(sourceLanguage, targetLanguage)) {
+        if (settings.ignoreTargetLanguage && sameLanguage(sourceLanguage, targetLanguage)) {
           return;
         }
 
@@ -190,7 +254,7 @@
           return;
         }
 
-        if (!document.contains(messageElement)) {
+        if (!isCurrent()) {
           return;
         }
 
@@ -202,11 +266,15 @@
           state.settings.displayMode
         );
       } catch (error) {
+        if (isCurrent()) {
+          delete messageElement.dataset.tltProcessed;
+        }
         warn("Erro ao traduzir mensagem", error);
       }
     });
 
     if (!queued) {
+      delete messageElement.dataset.tltProcessed;
       warn("Fila cheia, mensagem ignorada");
     }
   }

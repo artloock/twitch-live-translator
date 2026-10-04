@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Twitch Live Translator",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Traduz mensagens novas do chat da Twitch localmente quando as APIs nativas do navegador estiverem disponíveis.",
   "action": {
     "default_title": "Twitch Live Translator",

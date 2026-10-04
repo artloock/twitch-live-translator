@@ -28,8 +28,10 @@ Contribuicoes sao bem-vindas, principalmente em areas que ainda precisam de refi
 - Evita processamento repetido com `data-tlt-processed`.
 - Cache LRU simples com limite de 750 traducoes.
 - Fila com ate 3 traducoes simultaneas e aviso visual se houver overflow.
-- Popup com idioma de destino, modos de exibicao, filtros e status das APIs.
-- Botao `Preparar modelos locais` para tentar iniciar o download dos modelos a partir de um clique do usuario.
+- Inicia a preparacao dos modelos e a traducao ao encontrar o chat, inclusive ao trocar de live sem recarregar a Twitch.
+- Retoma modelos bloqueados por ativacao ao clicar ou pressionar uma tecla normalmente na Twitch, sem abrir o popup.
+- Popup compacto com apenas o idioma de destino e menu recolhido de configuracoes.
+- Modos de exibicao, filtros, status das APIs e botao de manutencao `Preparar modelos locais` dentro de `Configuracoes`.
 - Configuracoes persistidas com `chrome.storage.sync`.
 
 ## Modos de exibicao
@@ -83,27 +85,50 @@ Referencias:
 ## Como testar na Twitch
 
 1. Abra `https://www.twitch.tv/<canal>` com o chat visivel.
-2. Envie ou aguarde mensagens em outro idioma.
-3. Abra o popup da extensao.
-4. Confirme que `Traducao automatica` esta ligada.
-5. Se `Translation API` aparecer como `Disponivel, requer download`, clique em `Preparar modelos locais`.
-6. Altere o idioma ou o modo de exibicao e veja a mudanca sem recarregar.
+2. Aguarde mensagens em outro idioma: a traducao automatica vem ligada por padrao e inicia sem abrir a extensao.
+3. No primeiro uso, se o navegador exigir ativacao para baixar os modelos, uma interacao normal na Twitch (clique ou tecla) faz a extensao tentar novamente.
+4. Abra o popup apenas para escolher outro idioma de destino. A escolha fica salva para as proximas lives.
+5. Abra `Configuracoes` para mudar o modo de exibicao, filtros ou desativar a traducao. Desativar restaura as mensagens originais.
+6. Troque de canal pela propria Twitch e confirme que o novo chat continua sendo traduzido.
 7. Teste tambem o popout em URLs como `https://www.twitch.tv/popout/<canal>/chat?popout=`.
+
+Ao atualizar a extensao carregada manualmente, clique em recarregar na pagina de extensoes e recarregue uma vez as abas da Twitch ja abertas, para carregar os scripts novos.
 
 ## Download inicial dos modelos
 
 Quando a Translator API ou a Language Detector API retorna `downloadable` ou `downloading`, o navegador pode baixar modelos locais. A extensao exibe esse estado no popup e impede criacoes duplicadas para o mesmo par de idiomas usando promises compartilhadas.
 
-O botao `Preparar modelos locais` tenta baixar/preparar o detector de idioma e o par `en -> idioma de destino`, que cobre a maioria dos chats em ingles. Outros idiomas podem exigir download quando aparecerem pela primeira vez.
+A preparacao comeca automaticamente quando o chat aparece. O detector e o tradutor sao inicializados juntos. O par inicial e `en -> idioma de destino`, ou `es -> en` quando o destino e ingles. Outros idiomas podem exigir modelos adicionais quando aparecerem.
+
+Se a API exigir ativacao do usuario, a extensao aguarda uma interacao normal na pagina e retoma os modelos pendentes e as mensagens ainda visiveis. Ela nao simula cliques nem consegue remover uma exigencia do navegador. Depois de os modelos estarem disponiveis para o contexto da Twitch, a traducao pode iniciar automaticamente nas proximas lives.
+
+O botao `Preparar modelos locais`, dentro de `Configuracoes`, fica disponivel como manutencao manual. Ele tambem pede que as abas da Twitch tentem novamente, sem exigir recarregamento para essa tentativa.
 
 ## Limitacoes conhecidas
 
 - Se `Translator` ou `LanguageDetector` nao existirem no navegador/contexto da pagina, a extensao nao traduz e mostra o status como indisponivel.
 - Algumas versoes do Chrome podem exigir flags, suporte de hardware, disponibilidade regional ou interacao recente do usuario para criar os modelos.
-- Se o Chrome negar `Translator.create()` por falta de ativacao do usuario, abra o popup e clique em `Preparar modelos locais`.
+- O primeiro uso ou um novo par de idiomas pode exigir uma interacao na Twitch antes do download. Abrir a live por URL, sozinho, nao garante ativacao do usuario.
+- Com `Detectar idioma automaticamente` desligado, o idioma de origem e considerado ingles.
 - O DOM da Twitch muda com frequencia. Selectors tolerantes foram usados, mas podem precisar de ajuste.
 - A opcao `Preservar emotes` existe porque essa versao nunca substitui o `innerHTML` da mensagem; ela e mantida como preferencia para evolucoes futuras.
-- Sem provider externo nesta primeira versao. Nao ha API keys no projeto.
+- Sem provider externo. Nao ha API keys no projeto e mensagens nao sao enviadas a um servidor de traducao.
+
+## Testes automatizados
+
+As dependencias de desenvolvimento servem apenas para testes; a extensao continua em JavaScript puro, sem build ou dependencias em tempo de execucao.
+
+```powershell
+npm install
+$env:TLT_BROWSER_CHANNEL = "msedge"
+npm test
+```
+
+Para usar o Chromium do Playwright em vez do Edge instalado, execute `npx playwright install chromium` e rode `npm test` sem `TLT_BROWSER_CHANNEL`.
+
+Os testes usam um DOM de chat e APIs nativas simuladas dentro de um navegador real. Cobrem inicio automatico, chat tardio, troca de live, ativacao, mensagens pendentes, troca de idioma, desativacao e o popup. Eles nao validam a qualidade dos modelos reais nem a compatibilidade com o DOM atual da Twitch. Screenshots do popup ficam em `test-results/`.
+
+O icone de configuracoes vem do [Lucide](https://lucide.dev), com licenca em `docs/lucide-license.txt`.
 
 ## Como alterar selectors da Twitch
 
